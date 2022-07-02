@@ -1,5 +1,5 @@
 # Loconet
-Loconet Accessory Controller
+
 CR4114 Loconet Accessory Controller
 
 Uses: To control Servos, Tortoise etc for turnouts, LED lighting or accessories
