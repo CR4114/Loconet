@@ -1,0 +1,263 @@
+/*
+ * CR4114 Railroad Working KeyPad Loconet Accessory Controller 16x2 LCD 22Apr22
+ 
+ * Original Keypad, LCD example Created by ArduinoGetStarted.com
+ * This example code is in the public domain
+ 
+ *Loconet Library and example Sketches acknowledgements:
+ *Alex Shepherd  https://www.arduinolibraries.info/libraries/loco-net
+ *John Plocher   https://github.com/plocher/Example_Loconet_Control_Panel/blob/master/LoconetControlPanel.ino
+ *Hans Tanner    https://www.youtube.com/watch?v=gW1FAVXTNVo
+ 
+ LN Output Arduino pin 7 White Wire from Loconet Interface
+ LN Input  Arduino pin 8 Yellow Wire from Loconet Interface
+ 
+ Single and Double digit numbers are individual turnouts
+ Three digit numbers are 4 Routes Hard Coded Routes: 200, 201, 202, 203
+ Inputs >204 and Four Digit or greater numbers are Invalid
+ May add more Routes by changing Invalid Route Range for Closed and Throw
+ */
+
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+#include <Keypad.h>
+#include <LocoNet.h>
+
+#define LN_TX_PIN     7   	  // Loconet Interface TX pin
+							  // Loconet turnout position definitions to make code easier to read
+#define TURNOUT_NORMAL     1  // aka closed
+#define TURNOUT_DIVERGING  0  // aka thrown
+
+lnMsg  *LnPacket;             // pointer to a received LNet packet
+
+                    // Construct a Loconet packet that requests a turnout to set/change its state
+void sendOPC_SW_REQ(int address, byte dir, byte on) {
+    lnMsg SendPacket ;
+    
+    int sw2 = 0x00;
+    if (dir == TURNOUT_NORMAL) { sw2 |= B00100000; }
+    if (on) { sw2 |= B00010000; }
+    sw2 |= (address >> 7) & 0x0F;
+    
+    SendPacket.data[ 0 ] = OPC_SW_REQ ;
+    SendPacket.data[ 1 ] = address & 0x7F ;
+    SendPacket.data[ 2 ] = sw2 ;
+    
+    LocoNet.send( &SendPacket );
+}
+
+void setLNTurnout(int address, byte dir) {
+      sendOPC_SW_REQ(address - 1, dir, 1);
+      sendOPC_SW_REQ(address - 1, dir, 0);
+}
+
+const int ROW_NUM = 4; //four rows            
+const int COLUMN_NUM = 3; //three columns
+
+char keys[ROW_NUM][COLUMN_NUM] = {			//Set up Keypad 4x3 matrix
+  {'1', '2', '3'},
+  {'4', '5', '6'},
+  {'7', '8', '9'},
+  {'*', '0', '#'}
+};
+
+byte pin_rows[ROW_NUM] = {12, 11, 10, 9};   //connect to the row pinouts of the keypad
+byte pin_column[COLUMN_NUM] = {5, 4, 3};    //connect to the column pinouts of the keypad
+
+Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_NUM );
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);         // LCD Display Addr 27 for 16x2 Blue LCD
+  String inputString;
+  long inputInt;
+
+void setup() {
+  LocoNet.init(LN_TX_PIN);
+  lcd.init(); 
+  lcd.backlight();
+  inputString.reserve(4);       // maximum number of digit for a number is 4, change if needed
+}
+
+void loop() {
+  
+  lcd.setCursor(0,0);                   //Set LCD Line 1 Header
+  lcd.print("Turnout:");
+
+  lcd.setCursor(2,1);                   //Set LCD Line 2 Header
+  lcd.print("State:");
+  
+  char key = keypad.getKey();           //Get input key
+
+  if (key) {
+     lcd.setCursor(13,0);               //Set Cursor to column 13 line 1
+    
+    if (key >= '0' && key <= '9') {     // only act on numeric keys
+      inputString += key;               // append new character to input string
+      lcd.print (inputString);
+    }
+
+      else if ((inputString.length() > 0)&&(inputString.length() <= 2)&&(key == '#')) {   //Turnout Address Closed
+       inputInt = inputString.toInt();  // YOU GOT AN INTEGER NUMBER
+         lcd.setCursor(9,1);
+         lcd.print("Closed");
+       setLNTurnout(inputInt, TURNOUT_NORMAL);    //Send Loconet Message
+         delay (3000);
+         inputString = "";               // clear input
+         lcd.clear();
+    }
+  } 
+      if (key == '*') {                   //Turnout Address Thrown
+       if ((inputString.length() > 0)&&(inputString.length() <= 2)) {
+        inputInt = inputString.toInt(); // YOU GOT AN INTEGER NUMBER
+         lcd.setCursor(9,1);
+         lcd.print("Thrown");     
+       setLNTurnout(inputInt, TURNOUT_DIVERGING); //Send Loconet Message
+         delay (3000);
+         inputString = "";                 // clear input
+         lcd.clear();
+    }
+  }
+      
+      if (key == '#'){                    //Route Address Closed
+        inputInt = inputString.toInt();   // YOU GOT AN INTEGER NUMBER
+        if (inputString.length() == 3) {
+         lcd.setCursor(9,1);
+         lcd.print("Route C");
+        
+         if (inputInt >199 && inputInt <201) {  //Route 200 Closed
+            setLNTurnout(20, TURNOUT_NORMAL); 	//Turnout Address 20  
+               lcd.setCursor(9,0);
+               lcd.print ("20C");  				
+               delay (3900);
+            setLNTurnout(21, TURNOUT_NORMAL);	//Turnout Address 21
+               lcd.setCursor(9,0);
+               lcd.print ("21C");
+               delay (3900);
+            setLNTurnout(22, TURNOUT_NORMAL);	//Turnout Address 22
+               lcd.setCursor(9,0);
+               lcd.print ("22C");
+               delay (3900);
+            setLNTurnout(23, TURNOUT_NORMAL);	//Turnout Address 23
+               lcd.setCursor(9,0);
+               lcd.print ("23C");
+               delay (3900);    
+            inputString = "";              	    // clear input
+             lcd.clear();
+        }
+     }
+         if (inputInt >200 && inputInt <202) {  //Route 201 Closed
+            setLNTurnout(24, TURNOUT_NORMAL);
+               lcd.setCursor(9,0);
+               lcd.print ("24C");
+               delay (3900);
+            setLNTurnout(43, TURNOUT_NORMAL);
+               lcd.setCursor(9,0);
+               lcd.print ("43C");
+               delay (3900);      
+            inputString = "";                   // clear input
+               lcd.clear();
+     }
+         if (inputInt >201 && inputInt <203) {  //Route 202 Closed
+            setLNTurnout(25, TURNOUT_NORMAL);
+               lcd.setCursor(9,0);
+               lcd.print ("25C");
+               delay (3900);
+            setLNTurnout(42, TURNOUT_NORMAL);
+               lcd.setCursor(9,0);
+               lcd.print ("42C");
+               delay (3900);      
+            inputString = "";                   // clear input
+               lcd.clear();
+     }
+         if (inputInt >202 && inputInt <204) {  //Route 203 Closed
+            setLNTurnout(40, TURNOUT_NORMAL);
+               lcd.setCursor(9,0);
+               lcd.print ("40C");
+               delay (3900);
+            setLNTurnout(41, TURNOUT_NORMAL);
+               lcd.setCursor(9,0);
+               lcd.print ("41C");
+               delay (3900);      
+            inputString = "";                   // clear input
+               lcd.clear();
+     }
+       if (inputInt>10 && inputInt<=199 || inputInt>203) {   //Invalid Route Range
+               lcd.setCursor(9,1);
+               lcd.print ("Invalid");
+               delay (1000);    
+            inputString = "";                  // clear input
+               lcd.clear();
+     }
+   }
+
+    if (key == '*') {                    	  //Route Address Thrown
+      inputInt = inputString.toInt();         // YOU GOT AN INTEGER NUMBER
+       if (inputString.length() == 3) {
+         lcd.setCursor(9,1);
+         lcd.print("Route T");
+
+         if (inputInt >199 && inputInt <201) {     //Route 200 Thrown
+             setLNTurnout(20, TURNOUT_DIVERGING);
+                lcd.setCursor(9,0);
+                lcd.print ("20T");
+                delay (3900);
+             setLNTurnout(21, TURNOUT_DIVERGING);
+                lcd.setCursor(9,0);
+                lcd.print ("21T");
+                delay (3900);
+             setLNTurnout(22, TURNOUT_DIVERGING);
+                lcd.setCursor(9,0);
+                lcd.print ("22T");
+                delay (3900);
+             setLNTurnout(23, TURNOUT_DIVERGING);
+                lcd.setCursor(9,0);
+                lcd.print ("23T");
+                delay (3900);
+                inputString = "";                 // clear input
+                lcd.clear();
+     }
+        if (inputInt >200 && inputInt <202) {    //Route 201 Thrown
+             setLNTurnout(24, TURNOUT_DIVERGING);
+                lcd.setCursor(9,0);
+                lcd.print ("24T");
+                delay (3900);
+             setLNTurnout(43, TURNOUT_DIVERGING);
+                lcd.setCursor(9,0);
+                lcd.print ("43T");
+                delay (3900);     
+             inputString = "";                   // clear input
+                lcd.clear();
+     }
+         if (inputInt >201 && inputInt <203) {    //Route 202 Thrown
+            setLNTurnout(25, TURNOUT_DIVERGING);
+               lcd.setCursor(9,0);
+               lcd.print ("25T");
+               delay (3900);
+            setLNTurnout(42, TURNOUT_DIVERGING);
+               lcd.setCursor(9,0);
+               lcd.print ("42T");
+               delay (3900);      
+            inputString = "";                     // clear input
+               lcd.clear();
+     }
+         if (inputInt >202 && inputInt <204) {    //Route 203 Thrown
+            setLNTurnout(40, TURNOUT_DIVERGING);
+               lcd.setCursor(9,0);
+               lcd.print ("40T");
+               delay (3900);
+            setLNTurnout(41, TURNOUT_DIVERGING);
+               lcd.setCursor(9,0);
+               lcd.print ("41T");
+               delay (3900);      
+            inputString = "";                     // clear input
+               lcd.clear();
+     }
+       if (inputInt>10 && inputInt<=199 || inputInt>203) {   //Invalid Route Range
+                lcd.setCursor(9,1);
+                lcd.print ("Invalid");
+                delay (1000);    
+            inputString = "";                    // clear input
+                lcd.clear();
+      }
+    }
+  }
+}
